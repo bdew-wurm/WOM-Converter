@@ -1,17 +1,21 @@
 package com.wurmonline.womconverter;
 
-import java.io.File;
+import com.wurmonline.womconverter.converters.AssimpToWOMConverter;
 import javafx.application.Application;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import com.wurmonline.womconverter.converters.AssimpToWOMConverter;
+
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 
 public class Main extends Application {
-    
+
     public static void main(String[] args) {
         if (args.length == 0 || (args.length == 1 && args[0].equalsIgnoreCase("-h"))) {
             System.out.println("Usage:");
@@ -21,6 +25,8 @@ public class Main extends Application {
             System.out.println("-recursive : export files recursively in all subfolders relative to input directory, will create output directory folders accordingly. Default: off.");
             System.out.println("-indir input_directory : look for input files in input_directory. Must be a directory. Default: current dir.");
             System.out.println("-outdir output_directory : output directory for output files. Must be a directory. Default: current dir.");
+            System.out.println("-matreport <file> : reports materials and textures used in each model to given file");
+            System.out.println("-forcemats <file> : load overrides for material names based on texture file");
             System.out.println("input_files_regex : regex used to lookup the input files to convert.");
             System.out.println("Examples:");
             System.out.println("java -jar WOM_Converter.jar -generatetangents .+dae");
@@ -30,15 +36,17 @@ public class Main extends Application {
 
             launch(args);
         }
-        
+
         boolean generateTangents = false;
         boolean recursive = false;
         String inputDirectory = "";
         String outputDirectory = "";
-        
+        File forceMatsFile = null;
+        File matReportFile = null;
+
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
-            
+
             switch (arg) {
                 case "-devfilechooser":
                     launch(args);
@@ -57,11 +65,19 @@ public class Main extends Application {
                     i++;
                     outputDirectory = args[i];
                     break;
+                case "-forcemats":
+                    i++;
+                    forceMatsFile = new File(args[i]);
+                    break;
+                case "-matreport":
+                    i++;
+                    matReportFile = new File(args[i]);
+                    break;
             }
         }
-        
+
         String inputRegex = args[args.length - 1];
-        
+
         File inputDirectoryFile = new File(inputDirectory);
         if (!inputDirectoryFile.isDirectory()) {
             System.err.println("Input directory is not a valid directory: " + inputDirectory);
@@ -72,17 +88,33 @@ public class Main extends Application {
             System.err.println("Output directory is not a valid directory: " + outputDirectory);
             return;
         }
-        
+
+        Properties forceMats = new Properties();
+        if (forceMatsFile != null) {
+            try (FileInputStream in = new FileInputStream(forceMatsFile)) {
+                forceMats.load(in);
+            } catch (IOException e) {
+                throw new RuntimeException("Error reading forcemats file", e);
+            }
+        }
+
+        MatReporter matReport = null;
+
         try {
-            convertFiles(inputDirectoryFile, outputDirectoryFile, inputRegex, recursive, generateTangents);
+            if (matReportFile != null) {
+                matReport = new MatReporter(matReportFile);
+            }
+            convertFiles(inputDirectoryFile, outputDirectoryFile, inputRegex, recursive, generateTangents, forceMats, matReport);
         } catch (IOException ex) {
             Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+        } finally {
+            if (matReport != null) matReport.close();
         }
-        
+
         System.exit(0);
     }
-    
-    private static void convertFiles(File inputDirectory, File outputDirectory, String inputRegex, boolean recursive, boolean generateTangents) throws IOException {
+
+    private static void convertFiles(File inputDirectory, File outputDirectory, String inputRegex, boolean recursive, boolean generateTangents, Properties forceMats, MatReporter matReport) throws IOException {
         File[] filteredFiles = inputDirectory.listFiles((File file) -> {
             if (file.isDirectory()) {
                 return false;
@@ -90,22 +122,22 @@ public class Main extends Application {
 
             return file.getName().matches(inputRegex);
         });
-        
+
         for (File file : filteredFiles) {
-            AssimpToWOMConverter.convert(file, outputDirectory, generateTangents);
+            AssimpToWOMConverter.convert(file, outputDirectory, generateTangents, forceMats, matReport);
         }
-        
+
         if (recursive) {
             File[] directories = inputDirectory.listFiles((File file) -> {
                 return file.isDirectory();
             });
-            
+
             for (File directory : directories) {
                 String name = directory.getName();
-                
+
                 File newInputDirectory = directory;
                 File newOutputDirectory = new File(outputDirectory, name);
-                convertFiles(newInputDirectory, newOutputDirectory, inputRegex, recursive, generateTangents);
+                convertFiles(newInputDirectory, newOutputDirectory, inputRegex, recursive, generateTangents, forceMats, matReport);
             }
         }
     }
@@ -113,16 +145,16 @@ public class Main extends Application {
     public void start(Stage primaryStage) throws Exception {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Open Collada Model");
-        
+
         File modelFile = fileChooser.showOpenDialog(primaryStage);
-        
+
         if (modelFile == null) {
             System.exit(0);
         }
-        
-        AssimpToWOMConverter.convert(modelFile, modelFile.getParentFile(), true);
-        
+
+        AssimpToWOMConverter.convert(modelFile, modelFile.getParentFile(), true, new Properties(), null);
+
         System.exit(0);
     }
-    
+
 }
