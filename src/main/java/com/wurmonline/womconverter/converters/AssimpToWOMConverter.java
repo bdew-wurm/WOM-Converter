@@ -160,7 +160,7 @@ public class AssimpToWOMConverter {
         AIString textureNameNative = AIString.create();
         Assimp.aiGetMaterialString(material, Assimp._AI_MATKEY_TEXTURE_BASE, Assimp.aiTextureType_DIFFUSE, 0, textureNameNative);
         String textureName = textureNameNative.dataString();
-        textureName = textureName.substring(textureName.lastIndexOf("/") + 1, textureName.length());
+        textureName = textureName.substring(Math.max(textureName.lastIndexOf("/"), textureName.lastIndexOf("\\")) + 1);
         writeString(output, textureName);
         
         AIString materialNameNative = AIString.create();
