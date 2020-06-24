@@ -39,6 +39,11 @@ public class AssimpToWOMConverter {
         }
         AIScene scene = Assimp.aiImportFile(inputFile.getAbsolutePath(), flags);
 
+        if (scene == null) {
+            System.err.printf("Failed to load scene from %s - %s%n", inputFile.getName(), Assimp.aiGetErrorString());
+            return;
+        }
+
         LittleEndianDataOutputStream output = new LittleEndianDataOutputStream(new FileOutputStream(new File(outputDirectory, modelFileName + ".wom")));
 
         PointerBuffer materialsPointer = scene.mMaterials();
