@@ -149,6 +149,8 @@ public class AssimpToWOMConverter {
         output.writeInt(facesCount * 3);
         for (int i = 0; i < facesCount; i++) {
             AIFace face = mesh.mFaces().get(i);
+            if (face.mIndices().get(0) > Short.MAX_VALUE || face.mIndices().get(1) > Short.MAX_VALUE || face.mIndices().get(2) > Short.MAX_VALUE)
+                throw new IllegalArgumentException(String.format("mesh %s has too many vertices and can't be represented correctly in WOM", name));
             output.writeShort(face.mIndices().get(0));
             output.writeShort(face.mIndices().get(1));
             output.writeShort(face.mIndices().get(2));
