@@ -12,6 +12,8 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
+import java.util.Objects;
 import java.util.Properties;
 
 public class AssimpToWOMConverter {
@@ -69,9 +71,52 @@ public class AssimpToWOMConverter {
             writeMaterial(output, materials[meshes[i].mMaterialIndex()], forceMats, matReport);
         }
 
-        int jointsCount = 0;
-        output.writeInt(jointsCount);
-        // joint exporting here
+        ArrayList<AINode> nodesToWrite = new ArrayList<>();
+
+        AINode root = scene.mRootNode();
+        if (root != null) {
+            System.out.println(String.format("Checking nodes - root: %s (%d children / %d meshes)", root.mName().dataString(), root.mNumChildren(), root.mNumMeshes()));
+            if (root.mChildren() != null) {
+                for (int i = 0; i < root.mNumChildren(); i++) {
+                    AINode child = AINode.create(Objects.requireNonNull(root.mChildren()).get(i));
+                    boolean write = child.mName().dataString().startsWith("wom-");
+                    System.out.println(String.format("%s %s (%d children / %d meshes)", write ? "+" : "-", child.mName().dataString(), child.mNumChildren(), child.mNumMeshes()));
+                    if (write) {
+                        nodesToWrite.add(child);
+                        AIMatrix4x4 trans = child.mTransformation();
+                        System.out.println(String.format(" -> %f %f %f %f", trans.a1(), trans.a2(), trans.a3(), trans.a4()));
+                        System.out.println(String.format(" -> %f %f %f %f", trans.b1(), trans.b2(), trans.b3(), trans.b4()));
+                        System.out.println(String.format(" -> %f %f %f %f", trans.c1(), trans.c2(), trans.c3(), trans.c4()));
+                        System.out.println(String.format(" -> %f %f %f %f", trans.d1(), trans.d2(), trans.d3(), trans.d4()));
+                    }
+                }
+            }
+        }
+
+        output.writeInt(nodesToWrite.size());
+        for (AINode node : nodesToWrite) {
+            writeString(output, "");
+            writeString(output, node.mName().dataString().substring(4));
+            output.write(0);
+            AIMatrix4x4 trans = node.mTransformation();
+            output.writeFloat(trans.a1());
+            output.writeFloat(trans.a2());
+            output.writeFloat(trans.a3());
+            output.writeFloat(trans.a4());
+            output.writeFloat(trans.b1());
+            output.writeFloat(trans.b2());
+            output.writeFloat(trans.b3());
+            output.writeFloat(trans.b4());
+            output.writeFloat(trans.c1());
+            output.writeFloat(trans.c2());
+            output.writeFloat(trans.c3());
+            output.writeFloat(trans.c4());
+            output.writeFloat(trans.d1());
+            output.writeFloat(trans.d2());
+            output.writeFloat(trans.d3());
+            output.writeFloat(trans.d4());
+            for (int i = 0; i < 16; i++) output.writeFloat(0f);
+        }
 
         for (int i = 0; i < meshesCount; i++) {
             boolean hasSkinning = false;
