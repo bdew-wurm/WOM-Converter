@@ -2,6 +2,7 @@ package com.wurmonline.womconverter.converters;
 
 import com.google.common.io.LittleEndianDataOutputStream;
 import com.wurmonline.womconverter.MatReporter;
+import com.wurmonline.womconverter.Utils;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.assimp.*;
@@ -13,12 +14,15 @@ import java.net.MalformedURLException;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Objects;
 import java.util.Properties;
 
 public class AssimpToWOMConverter {
 
     private static final String FLOATS_FORMAT = "%.4f";
+
+    private static AIMatrix4x4 emptyMatrix = AIMatrix4x4.create();
 
     public static void convert(File inputFile, File outputDirectory, boolean generateTangents, Properties forceMats, MatReporter matReport) throws MalformedURLException, IOException {
         if (inputFile == null || outputDirectory == null) {
@@ -77,9 +81,10 @@ public class AssimpToWOMConverter {
         if (root != null) {
             System.out.println(String.format("Checking nodes - root: %s (%d children / %d meshes)", root.mName().dataString(), root.mNumChildren(), root.mNumMeshes()));
             if (root.mChildren() != null) {
+                nodesToWrite.add(root);
                 for (int i = 0; i < root.mNumChildren(); i++) {
                     AINode child = AINode.create(Objects.requireNonNull(root.mChildren()).get(i));
-                    boolean write = child.mName().dataString().startsWith("wom-");
+                    boolean write = child.mName().dataString().startsWith("wom-") || child.mNumMeshes() > 0;
                     System.out.println(String.format("%s %s (%d children / %d meshes)", write ? "+" : "-", child.mName().dataString(), child.mNumChildren(), child.mNumMeshes()));
                     if (write) {
                         nodesToWrite.add(child);
@@ -93,36 +98,75 @@ public class AssimpToWOMConverter {
             }
         }
 
+        HashMap<Integer, AINode> meshNodeMap = new HashMap<>();
+
         output.writeInt(nodesToWrite.size());
+
         for (AINode node : nodesToWrite) {
-            writeString(output, "");
-            writeString(output, node.mName().dataString().substring(4));
+            if (node.mNumMeshes() > 0) {
+                for (int i = 0; i < node.mNumMeshes(); i++) {
+                    int mesh = node.mMeshes().get(i);
+                    meshNodeMap.put(mesh, node);
+                }
+            }
+
+            String parent = Utils.sanitizeNodeName(node.mParent(), root);
+            writeString(output, parent);
+
+            String name = Utils.sanitizeNodeName(node, root);
+            writeString(output, name);
+
+            System.out.println(String.format("Writing node %s (parent: %s)", name, parent));
+
             output.write(0);
+
             AIMatrix4x4 trans = node.mTransformation();
-            output.writeFloat(trans.a1());
-            output.writeFloat(trans.a2());
-            output.writeFloat(trans.a3());
-            output.writeFloat(trans.a4());
-            output.writeFloat(trans.b1());
-            output.writeFloat(trans.b2());
-            output.writeFloat(trans.b3());
-            output.writeFloat(trans.b4());
-            output.writeFloat(trans.c1());
-            output.writeFloat(trans.c2());
-            output.writeFloat(trans.c3());
-            output.writeFloat(trans.c4());
-            output.writeFloat(trans.d1());
-            output.writeFloat(trans.d2());
-            output.writeFloat(trans.d3());
-            output.writeFloat(trans.d4());
-            for (int i = 0; i < 16; i++) output.writeFloat(0f);
+            writeMatrix(output, trans);
+            writeMatrix(output, emptyMatrix);
         }
 
         for (int i = 0; i < meshesCount; i++) {
-            boolean hasSkinning = false;
-            output.write(hasSkinning ? 1 : 0);
-            // skinning exporting here
+            if (meshNodeMap.containsKey(i)) {
+                AINode node = meshNodeMap.get(i);
+                AIMesh mesh = meshes[i];
+                System.out.println(String.format("Attach mesh %s to node %s", mesh.mName().dataString(), node.mName().dataString()));
+                output.write(1);
+                output.writeInt(1); //num of skins
+                writeString(output, Utils.sanitizeNodeName(node, root));
+                writeMatrix(output, node.mTransformation());
+                writeMatrix(output, emptyMatrix);
+                output.writeInt(mesh.mNumVertices());
+                for (int j = 0; j < mesh.mNumVertices(); j++) {
+                    output.writeInt(j);
+                    output.writeFloat(1);
+                }
+            } else output.write(0);
         }
+
+
+//        System.out.println(String.format("Animations: %d", scene.mNumAnimations()));
+//        PointerBuffer animsPointer = scene.mAnimations();
+//        AIAnimation[] anims = new AIAnimation[scene.mNumAnimations()];
+//        for (int i = 0; i < scene.mNumAnimations(); i++) {
+//            anims[i] = AIAnimation.create(animsPointer.get(i));
+//        }
+//
+//        for (AIAnimation anim : anims) {
+//            System.out.println(String.format(" - Animation: %s Duration=%f Channels: %d/%d/%d", anim.mName().dataString(), anim.mDuration(),
+//                    anim.mNumChannels(), anim.mNumMeshChannels(), anim.mNumMorphMeshChannels())
+//            );
+//
+//            PointerBuffer channelsPointer = anim.mChannels();
+//            AINodeAnim[] channels = new AINodeAnim[anim.mNumChannels()];
+//            for (int i = 0; i < anim.mNumChannels(); i++) {
+//                channels[i] = AINodeAnim.create(channelsPointer.get(i));
+//            }
+//
+//            for (AINodeAnim channel : channels) {
+//                System.out.println(String.format("   + Channel for node %s keys: %d/%d/%d", channel.mNodeName().dataString(),
+//                        channel.mNumPositionKeys(), channel.mNumRotationKeys(), channel.mNumScalingKeys()));
+//            }
+//        }
 
         output.close();
 
@@ -278,4 +322,22 @@ public class AssimpToWOMConverter {
         }
     }
 
+    private static void writeMatrix(LittleEndianDataOutputStream output, AIMatrix4x4 matrix) throws IOException {
+        output.writeFloat(matrix.a1());
+        output.writeFloat(matrix.a2());
+        output.writeFloat(matrix.a3());
+        output.writeFloat(matrix.a4());
+        output.writeFloat(matrix.b1());
+        output.writeFloat(matrix.b2());
+        output.writeFloat(matrix.b3());
+        output.writeFloat(matrix.b4());
+        output.writeFloat(matrix.c1());
+        output.writeFloat(matrix.c2());
+        output.writeFloat(matrix.c3());
+        output.writeFloat(matrix.c4());
+        output.writeFloat(matrix.d1());
+        output.writeFloat(matrix.d2());
+        output.writeFloat(matrix.d3());
+        output.writeFloat(matrix.d4());
+    }
 }
