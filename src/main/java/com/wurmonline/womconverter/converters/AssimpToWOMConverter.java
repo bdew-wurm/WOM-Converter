@@ -1,6 +1,7 @@
 package com.wurmonline.womconverter.converters;
 
 import com.google.common.io.LittleEndianDataOutputStream;
+import com.wurmonline.womconverter.ConversionFailedException;
 import com.wurmonline.womconverter.MatReporter;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
@@ -20,7 +21,7 @@ public class AssimpToWOMConverter {
 
     private static final String FLOATS_FORMAT = "%.4f";
 
-    public static void convert(File inputFile, File outputDirectory, boolean generateTangents, Properties forceMats, MatReporter matReport) throws MalformedURLException, IOException {
+    public static void convert(File inputFile, File outputDirectory, boolean generateTangents, Properties forceMats, MatReporter matReport) throws MalformedURLException, IOException, ConversionFailedException {
         if (inputFile == null || outputDirectory == null) {
             throw new IllegalArgumentException("Input file and/or output directory cannot be null");
         } else if (!outputDirectory.isDirectory()) {
@@ -131,7 +132,7 @@ public class AssimpToWOMConverter {
         if (matReport != null) matReport.reportFile(inputFile.getName());
     }
 
-    private static void writeMesh(LittleEndianDataOutputStream output, AIMesh mesh) throws IOException {
+    private static void writeMesh(LittleEndianDataOutputStream output, AIMesh mesh) throws IOException, ConversionFailedException {
         boolean hasTangents = mesh.mTangents() != null;
         output.write(hasTangents ? 1 : 0);
         boolean hasBinormal = mesh.mBitangents() != null;
@@ -194,8 +195,9 @@ public class AssimpToWOMConverter {
         output.writeInt(facesCount * 3);
         for (int i = 0; i < facesCount; i++) {
             AIFace face = mesh.mFaces().get(i);
+            if (face.mNumIndices()!=3) throw new ConversionFailedException(String.format("mesh %s has a face that's not a triangle (%d vertices), this doesn't work in wom", name, face.mNumIndices()));
             if (face.mIndices().get(0) > Short.MAX_VALUE || face.mIndices().get(1) > Short.MAX_VALUE || face.mIndices().get(2) > Short.MAX_VALUE)
-                throw new IllegalArgumentException(String.format("mesh %s has too many vertices and can't be represented correctly in WOM", name));
+                throw new ConversionFailedException(String.format("mesh %s has too many vertices and can't be represented correctly in WOM", name));
             output.writeShort(face.mIndices().get(0));
             output.writeShort(face.mIndices().get(1));
             output.writeShort(face.mIndices().get(2));

@@ -8,7 +8,6 @@ import javafx.stage.Stage;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -124,7 +123,13 @@ public class Main extends Application {
         });
 
         for (File file : filteredFiles) {
-            AssimpToWOMConverter.convert(file, outputDirectory, generateTangents, forceMats, matReport);
+            try {
+                AssimpToWOMConverter.convert(file, outputDirectory, generateTangents, forceMats, matReport);
+            } catch (ConversionFailedException e) {
+                System.err.println(String.format("Conversion of %s failed: %s", file.getName(), e.getMessage()));
+                if (e.getCause() != null)
+                    e.getCause().printStackTrace();
+            }
         }
 
         if (recursive) {
