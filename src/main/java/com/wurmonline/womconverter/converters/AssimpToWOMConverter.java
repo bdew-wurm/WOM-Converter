@@ -207,15 +207,30 @@ public class AssimpToWOMConverter {
         int facesCount = mesh.mNumFaces();
         System.out.println("Faces:\t\t" + facesCount);
         System.out.println("Triangles:\t" + (facesCount * 3));
-        output.writeInt(facesCount * 3);
+
+        List<int[]> goodFaces = new ArrayList<>();
+        int skipped = 0;
+
         for (int i = 0; i < facesCount; i++) {
             AIFace face = mesh.mFaces().get(i);
-            if (face.mNumIndices()!=3) throw new ConversionFailedException(String.format("mesh %s has a face that's not a triangle (%d vertices), this doesn't work in wom", name, face.mNumIndices()));
+            if (face.mNumIndices() != 3) {
+                skipped++;
+                continue;
+            }
             if (face.mIndices().get(0) > Short.MAX_VALUE || face.mIndices().get(1) > Short.MAX_VALUE || face.mIndices().get(2) > Short.MAX_VALUE)
                 throw new ConversionFailedException(String.format("mesh %s has too many vertices and can't be represented correctly in WOM", name));
-            output.writeShort(face.mIndices().get(0));
-            output.writeShort(face.mIndices().get(1));
-            output.writeShort(face.mIndices().get(2));
+            goodFaces.add(new int[]{face.mIndices().get(0), face.mIndices().get(1), face.mIndices().get(2)});
+        }
+
+        if (skipped > 0)
+            System.err.println(String.format("Warning: mesh %s has %d face%s that's not a triangle, this doesn't work in wom", name, skipped, skipped > 1 ? "s" : ""));
+
+        output.writeInt(goodFaces.size() * 3);
+
+        for (int[] face : goodFaces) {
+            output.writeShort(face[0]);
+            output.writeShort(face[1]);
+            output.writeShort(face[2]);
         }
 
         System.out.println("");
