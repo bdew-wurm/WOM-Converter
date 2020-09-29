@@ -26,6 +26,7 @@ public class Main extends Application {
             System.out.println("-outdir output_directory : output directory for output files. Must be a directory. Default: current dir.");
             System.out.println("-matreport <file> : reports materials and textures used in each model to given file");
             System.out.println("-forcemats <file> : load overrides for material names based on texture file");
+            System.out.println("-fixmeshnames : rename meshes based on texture");
             System.out.println("input_files_regex : regex used to lookup the input files to convert.");
             System.out.println("Examples:");
             System.out.println("java -jar WOM_Converter.jar -generatetangents .+dae");
@@ -42,6 +43,7 @@ public class Main extends Application {
         String outputDirectory = "";
         File forceMatsFile = null;
         File matReportFile = null;
+        boolean fixMeshNames = false;
 
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
@@ -71,6 +73,9 @@ public class Main extends Application {
                 case "-matreport":
                     i++;
                     matReportFile = new File(args[i]);
+                    break;
+                case "-fixmeshnames":
+                    fixMeshNames = true;
                     break;
             }
         }
@@ -103,7 +108,7 @@ public class Main extends Application {
             if (matReportFile != null) {
                 matReport = new MatReporter(matReportFile);
             }
-            convertFiles(inputDirectoryFile, outputDirectoryFile, inputRegex, recursive, generateTangents, forceMats, matReport);
+            convertFiles(inputDirectoryFile, outputDirectoryFile, inputRegex, recursive, generateTangents, forceMats, matReport, fixMeshNames);
         } catch (IOException ex) {
             Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
         } finally {
@@ -113,7 +118,7 @@ public class Main extends Application {
         System.exit(0);
     }
 
-    private static void convertFiles(File inputDirectory, File outputDirectory, String inputRegex, boolean recursive, boolean generateTangents, Properties forceMats, MatReporter matReport) throws IOException {
+    private static void convertFiles(File inputDirectory, File outputDirectory, String inputRegex, boolean recursive, boolean generateTangents, Properties forceMats, MatReporter matReport, boolean fixMeshNames) throws IOException {
         File[] filteredFiles = inputDirectory.listFiles((File file) -> {
             if (file.isDirectory()) {
                 return false;
@@ -124,7 +129,7 @@ public class Main extends Application {
 
         for (File file : filteredFiles) {
             try {
-                AssimpToWOMConverter.convert(file, outputDirectory, generateTangents, forceMats, matReport);
+                AssimpToWOMConverter.convert(file, outputDirectory, generateTangents, forceMats, matReport, fixMeshNames);
             } catch (ConversionFailedException e) {
                 System.err.println(String.format("Conversion of %s failed: %s", file.getName(), e.getMessage()));
                 if (e.getCause() != null)
@@ -142,7 +147,7 @@ public class Main extends Application {
 
                 File newInputDirectory = directory;
                 File newOutputDirectory = new File(outputDirectory, name);
-                convertFiles(newInputDirectory, newOutputDirectory, inputRegex, recursive, generateTangents, forceMats, matReport);
+                convertFiles(newInputDirectory, newOutputDirectory, inputRegex, recursive, generateTangents, forceMats, matReport, fixMeshNames);
             }
         }
     }
@@ -157,7 +162,7 @@ public class Main extends Application {
             System.exit(0);
         }
 
-        AssimpToWOMConverter.convert(modelFile, modelFile.getParentFile(), true, new Properties(), null);
+        AssimpToWOMConverter.convert(modelFile, modelFile.getParentFile(), true, new Properties(), null, false);
 
         System.exit(0);
     }

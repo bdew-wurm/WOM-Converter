@@ -13,15 +13,13 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.ArrayList;
-import java.util.Objects;
-import java.util.Properties;
+import java.util.*;
 
 public class AssimpToWOMConverter {
 
     private static final String FLOATS_FORMAT = "%.4f";
 
-    public static void convert(File inputFile, File outputDirectory, boolean generateTangents, Properties forceMats, MatReporter matReport) throws MalformedURLException, IOException, ConversionFailedException {
+    public static void convert(File inputFile, File outputDirectory, boolean generateTangents, Properties forceMats, MatReporter matReport, boolean fixMeshNames) throws MalformedURLException, IOException, ConversionFailedException {
         if (inputFile == null || outputDirectory == null) {
             throw new IllegalArgumentException("Input file and/or output directory cannot be null");
         } else if (!outputDirectory.isDirectory()) {
@@ -64,8 +62,19 @@ public class AssimpToWOMConverter {
         int meshesCount = scene.mNumMeshes();
         output.writeInt(meshesCount);
 
+        HashMap<String, Integer> meshCounter = null;
+        if (fixMeshNames) meshCounter = new HashMap<>();
+
         for (int i = 0; i < meshesCount; i++) {
-            writeMesh(output, meshes[i]);
+            if (fixMeshNames) {
+                String tex = getMaterialTexture(materials[meshes[i].mMaterialIndex()]);
+                if (tex.contains(".")) tex = tex.substring(0, tex.indexOf('.'));
+                int n = meshCounter.getOrDefault(tex, 1);
+                meshCounter.put(tex, n + 1);
+                writeMesh(output, meshes[i], String.format("%s-%d", tex, n));
+            } else {
+                writeMesh(output, meshes[i], null);
+            }
 
             int materialCount = 1;
             output.writeInt(materialCount);
@@ -132,7 +141,7 @@ public class AssimpToWOMConverter {
         if (matReport != null) matReport.reportFile(inputFile.getName());
     }
 
-    private static void writeMesh(LittleEndianDataOutputStream output, AIMesh mesh) throws IOException, ConversionFailedException {
+    private static void writeMesh(LittleEndianDataOutputStream output, AIMesh mesh, String nameOverride) throws IOException, ConversionFailedException {
         boolean hasTangents = mesh.mTangents() != null;
         output.write(hasTangents ? 1 : 0);
         boolean hasBinormal = mesh.mBitangents() != null;
@@ -141,8 +150,14 @@ public class AssimpToWOMConverter {
         output.write(hasVertexColor ? 1 : 0);
 
         String name = mesh.mName().dataString();
-        writeString(output, name);
-        System.out.println("Mesh name:\t" + name);
+
+        if (nameOverride != null) {
+            writeString(output, nameOverride);
+            System.out.println("Mesh name override:\t" + nameOverride);
+        } else {
+            writeString(output, name);
+            System.out.println("Mesh name:\t" + name);
+        }
 
         System.out.println("Has tangents:\t" + hasTangents);
         System.out.println("Has binormals:\t" + hasBinormal);
@@ -206,11 +221,15 @@ public class AssimpToWOMConverter {
         System.out.println("");
     }
 
-    private static void writeMaterial(LittleEndianDataOutputStream output, AIMaterial material, Properties forceMats, MatReporter matReport) throws IOException {
+    private static String getMaterialTexture(AIMaterial material) {
         AIString textureNameNative = AIString.create();
         Assimp.aiGetMaterialString(material, Assimp._AI_MATKEY_TEXTURE_BASE, Assimp.aiTextureType_DIFFUSE, 0, textureNameNative);
         String textureName = textureNameNative.dataString();
-        textureName = textureName.substring(Math.max(textureName.lastIndexOf("/"), textureName.lastIndexOf("\\")) + 1);
+        return textureName.substring(Math.max(textureName.lastIndexOf("/"), textureName.lastIndexOf("\\")) + 1);
+    }
+
+    private static void writeMaterial(LittleEndianDataOutputStream output, AIMaterial material, Properties forceMats, MatReporter matReport) throws IOException {
+        String textureName = getMaterialTexture(material);
         writeString(output, textureName);
 
         AIString materialNameNative = AIString.create();
